@@ -114,7 +114,10 @@
    [50 1 0 #f FS #f 0  A  A  A -4 #f #f 2 3 4 5 6 7 8 9 10 11 12]
    [51 reshuffle]))
 
+;; XXX convert to rune
 (module+ repl
+  (require racket/pretty)
+
   (define draw-pile (box #f))
   (define discard-pile (box #f))
 
@@ -145,14 +148,54 @@
     (for/list ([i (in-range n)])
       (1draw)))
 
+  (define (activate)
+    (card:action-activated-commands (1draw)))
+  (define (initiative)
+    (card:action-initiative-commands (1draw)))
+
+  (define (random n)
+    (cond
+      [(or (= n 0)
+           (< 12 n))
+       (error 'random "N is out of range: ~a" n)]
+      [(= n 1) 1]
+      [else
+       (vector-ref (card:action-randoms (1draw)) (- n 2))]))
+  (define (order . vs)
+    (cond
+      [(empty? vs)
+       '()]
+      [else
+       (define which (random (length vs)))
+       (define-values (before after) (split-at vs (sub1 which)))
+       (cons (first after)
+             (apply order (append before (rest after))))]))
+
+  (define (combat mod)
+    (define c (1draw))
+    (define (combat-check acc msg)
+      (define low (acc c))
+      (and low (<= low mod) msg))
+    (or (combat-check card:action-combat-miss-low "Miss")
+        (combat-check card:action-combat-pin-low "Pin")
+        (combat-check card:action-combat-hit-low "Hit")))
+
+  (define (hq-evt)
+    (define c (1draw))
+    (if (card:action-hq-evt? c)
+      (random 10)
+      #f))
+
+  ;; XXX hit effect
+  ;; XXX anti-tank
+  ;; XXX contact, cover, rally, spotted, concentrate fire, call for fire, grendar, inflitrate
+
   (define (quit) (exit 0))
 
-  (provide raw-draw
-           reshuffle!
-           1draw
-           draw
-           quit
-           (rename-out [quit q])))
+  (provide
+   (except-out (all-defined-out)
+               discard-pile draw-pile)
+   (rename-out [quit q])))
 
 
 (module+ main
