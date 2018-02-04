@@ -3,12 +3,15 @@
                      syntax/parse)
          racket/match
          racket/list
-         syntax/parse/define)
+         syntax/parse/define
+         struct-define
+         racket/set)
 
 (struct card () #:transparent)
-(struct card:reshuffle () #:transparent)
-(struct card:action
-  (activated-commands
+(struct card:reshuffle card () #:transparent)
+(struct card:action card
+  (card-no
+   activated-commands
    initiative-commands
    top-evt
    mid-evt
@@ -22,27 +25,27 @@
    combat-miss-low
    randoms) #:transparent)
 
-(define-syntax-rule (cards [i . c] ...)
+(define-syntax-rule (cards c ...)
   (list (make-card . c) ...))
 (define-syntax (make-card stx)
   (syntax-parse stx
-    [(_ (~datum reshuffle)) (syntax/loc stx (card:reshuffle))]
-    [(_ ac ic te me hq at hev hel heg chl cpl cml . randoms)
+    [(_ _ (~datum reshuffle)) (syntax/loc stx (card:reshuffle))]
+    [(_ cn ac ic te me hq at hev hel heg chl cpl cml . randoms)
      (syntax/loc stx
-       (card:action ac ic te me hq at hev hel heg chl cpl cml
+       (card:action cn ac ic te me hq at hev hel heg chl cpl cml
                     (list->vector (list . randoms))))]))
 
 (define C 'Contact)
 (define V 'Cover)
 (define R 'Rally)
 
-(define X 'Concentrate-Fire)
+(define X 'Crosshairs)
 (define I 'Infiltration)
 (define G 'Grenade)
 (define F 'Call-for-Fire)
 (define F3 'Battalion-Fire) ;; And F!
 (define J 'Jam)
-(define FS 'Short)
+(define FS 'Short-Fire)
 
 ;; L = Litter, F = Fire, A = Assault
 (define CC '(Casualty Casualty))
@@ -55,6 +58,8 @@
 (define PP '(Paralyzed Paralyzed))
 (define PL '(Paralyzed Litter))
 (define PF '(Paralyzed Fire-Team))
+(define HC '(Casualty))
+(define HF '(Fire-Team))
 (define P '(Paralyzed))
 (define L '(Litter))
 (define A '(Assault))
@@ -90,34 +95,122 @@
    [26 3 2  C  I #f 4 PF PF PL -4  0  4 2 2 3 3 4 4 5 5  6  6  7]
    [27 3 2  R  G #f 4 PF PF PL -4  0  4 2 2 3 3 4 4 5 6  6  7  7]
    [28 3 2  V  F #f 4 PF PF PL -4  0  4 2 2 3 3 4 4 5 6  6  7  7]
-   [29 3 2 #f  X #f 4  C  C PL -4  0  4 2 2 3 3 4 5 5 6  6  7  8]
-   [30 3 2  R  I #f 4  C  C PF -4  0  4 2 2 3 3 4 5 5 6  6  7  8]
-   [31 3 2  V  G #f 3  C  C PF -4  1  5 2 2 3 4 4 5 5 6  7  8  8]
-   [32 3 2 #f  F #t 3  C  C PF -4  1  5 2 2 3 4 4 5 6 7  7  8  8]
-   [33 3 2  R  X #f 3  C  C  C -4  1  5 2 2 3 4 5 5 6 7  7  8  9]
-   [34 3 2  V  I #f 3  P  C  C -4  1  5 2 3 3 4 5 5 6 7  7  8  9]
-   [35 3 1  V  G #t 3  P  P  C -4  1  5 2 3 3 4 5 5 6 7  7  9  9]
-   [36 3 1  R  F #f 2  P  P  C -4  2  6 2 3 3 4 5 6 6 7  8  9  9]
-   [37 2 1  V  X #f 2  P  P  C -4  2  6 2 3 3 4 5 6 6 7  8  9 10]
-   [38 2 1 #f  I #t 2  P  P  C -4  2  6 2 3 4 4 5 6 7 8  8  9 10]
+   [29 3 2 #f  X #f 4 HC HC PL -4  0  4 2 2 3 3 4 5 5 6  6  7  8]
+   [30 3 2  R  I #f 4 HC HC PF -4  0  4 2 2 3 3 4 5 5 6  6  7  8]
+   [31 3 2  V  G #f 3 HC HC PF -4  1  5 2 2 3 4 4 5 5 6  7  8  8]
+   [32 3 2 #f  F #t 3 HC HC PF -4  1  5 2 2 3 4 4 5 6 7  7  8  8]
+   [33 3 2  R  X #f 3 HC HC HC -4  1  5 2 2 3 4 5 5 6 7  7  8  9]
+   [34 3 2  V  I #f 3  P HC HC -4  1  5 2 3 3 4 5 5 6 7  7  8  9]
+   [35 3 1  V  G #t 3  P  P HC -4  1  5 2 3 3 4 5 5 6 7  7  9  9]
+   [36 3 1  R  F #f 2  P  P HC -4  2  6 2 3 3 4 5 6 6 7  8  9  9]
+   [37 2 1  V  X #f 2  P  P HC -4  2  6 2 3 3 4 5 6 6 7  8  9 10]
+   [38 2 1 #f  I #t 2  P  P HC -4  2  6 2 3 4 4 5 6 7 8  8  9 10]
    [39 2 1  R  G #f 2  L  P  P -4  2  6 2 3 4 4 5 6 7 8  8  9 10]
    [40 2 1  C  F #f 2  L  P  P -4  2 #f 2 3 4 4 5 6 7 8  8  9 10]
    [41 2 1  C  X #f 1  L  L  P -4  3 #f 2 3 4 5 5 6 7 8  9 10 11]
    [42 2 1  R F3 #f 1  L  L  P -4  3 #f 2 3 4 5 6 6 7 8  9 10 11]
-   [43 2 1  V  X #t 1  F  L  P -4  3 #f 2 3 4 5 6 7 7 8  9 10 11]
-   [44 2 1 #f F3 #f 1  F  L  P -4  3 #f 2 3 4 5 6 7 7 9  9 10 11]
-   [45 2 1  R  X #f 1  F  F  L -4  3 #f 2 3 4 5 6 7 8 9  9 10 11]
-   [46 2 1 #f F3 #f 0  F  F  L -4  4 #f 2 3 4 5 6 7 8 9 10 11 12]
-   [47 1 0  C  X #t 0  F  F  L -4  4 #f 2 3 4 5 6 7 8 9 10 11 12]
-   [48 1 0 #f F3 #f 0  A  F  F -4  5 #f 2 3 4 5 6 7 8 9 10 11 12]
-   [49 1 0 #f  J #f 0  A  A  F -4  6 #f 2 3 4 5 6 7 8 9 10 11 12]
+   [43 2 1  V  X #t 1 HF  L  P -4  3 #f 2 3 4 5 6 7 7 8  9 10 11]
+   [44 2 1 #f F3 #f 1 HF  L  P -4  3 #f 2 3 4 5 6 7 7 9  9 10 11]
+   [45 2 1  R  X #f 1 HF HF  L -4  3 #f 2 3 4 5 6 7 8 9  9 10 11]
+   [46 2 1 #f F3 #f 0 HF HF  L -4  4 #f 2 3 4 5 6 7 8 9 10 11 12]
+   [47 1 0  C  X #t 0 HF HF  L -4  4 #f 2 3 4 5 6 7 8 9 10 11 12]
+   [48 1 0 #f F3 #f 0  A HF HF -4  5 #f 2 3 4 5 6 7 8 9 10 11 12]
+   [49 1 0 #f  J #f 0  A  A HF -4  6 #f 2 3 4 5 6 7 8 9 10 11 12]
    [50 1 0 #f FS #f 0  A  A  A -4 #f #f 2 3 4 5 6 7 8 9 10 11 12]
    [51 reshuffle]))
 
+(define (combat-eval c mod)
+  (struct-define card:action c)
+  (define (combat-check low msg)
+    (and low (<= low mod) msg))
+  (or (combat-check combat-miss-low "Miss")
+      (combat-check combat-pin-low "Pin")
+      (combat-check combat-hit-low "Hit")))
+
+(require racket/pretty
+         racket/format
+         raart)
+
+(define (card-hit-format c)
+  (struct-define card:action c)
+  (define (hit-effect-format label res)
+    (define str (apply string (map (λ (x) (string-ref (symbol->string x) 0)) res)))
+    (vappend #:halign 'center
+             (text label)
+             (text str)))
+  (vappend #:halign 'center
+           (text "HIT EFFECT")
+           (happend (hit-effect-format "  Vet  " hit-effect-vet)
+                    (hit-effect-format "  Line " hit-effect-line)
+                    (hit-effect-format " Green " hit-effect-green))))
+(define (card-format c)
+  (struct-define card:action c)
+  (define commands
+    (vappend #:halign 'left
+             (text (~a "#" card-no))
+             (text (~a activated-commands " / " initiative-commands))
+             (text "")))
+  (define action-attempt
+    (vappend #:halign 'center
+             (text "")
+             (text (~a (or top-evt "")))
+             (text "")
+             (text (~a (or mid-evt "")))
+             (text "")
+             (text "")
+             (text "")
+             (text "")
+             (text (if hq-evt? "HQ" ""))
+             (text (~a "Anti-Tank: " anti-tank-number))
+             (blank)))
+  (define hit-effect (card-hit-format c))
+  (define combat-resolution
+    (vappend* #:halign 'center
+              (for/list ([ncm (in-range -4 7)])
+                (text (~a (~r #:sign '("+" " " "-") ncm) " "
+                          (string-upcase (combat-eval c ncm))
+                          #:align 'left
+                          #:min-width 7)))))
+  (define random-numbers
+    (vappend (style 'inverse
+               (happend*
+                (for/list ([i (in-range 2 13)])
+                  (text (~a #:min-width 3 #:align 'right i)))))
+             (happend*
+              (for/list ([i (in-vector randoms)])
+                (text (~a #:min-width 3 #:align 'right i))))))
+  (frame
+   (vappend
+    #:halign 'center
+    (happend (vappend #:halign 'left
+                      commands
+                      combat-resolution)
+             (vappend #:halign 'center
+                      action-attempt
+                      hit-effect))
+    random-numbers)))
+(define (card-print c)
+  (draw-here (card-format c)))
+(define (cards-print cs)
+  (define rs (map card-format cs))
+  (draw-here (vappend* #:halign 'left (map happend* (groups 2 rs)))))
+
+(define (group-add n a d)
+  (match d
+    ['() (list (list a))]
+    [(list* cur d)
+     (if (< (length cur) n)
+       (list* (cons a cur) d)
+       (list* (list a) (reverse cur) d))]))
+(define (groups n l)
+  (reverse (foldr (λ (a d) (group-add n a d)) '() l)))
+
+(define (card-flags c)
+  (struct-define card:action c)
+  (set-remove (list->seteq (list top-evt mid-evt)) #f))
+
 ;; XXX convert to rune
 (module+ repl
-  (require racket/pretty)
-
   (define draw-pile (box #f))
   (define discard-pile (box #f))
 
@@ -171,24 +264,51 @@
        (cons (first after)
              (apply order (append before (rest after))))]))
 
-  (define (combat mod)
-    (define c (1draw))
-    (define (combat-check acc msg)
-      (define low (acc c))
-      (and low (<= low mod) msg))
-    (or (combat-check card:action-combat-miss-low "Miss")
-        (combat-check card:action-combat-pin-low "Pin")
-        (combat-check card:action-combat-hit-low "Hit")))
-
+  (define (raw-combat mod)
+    (combat-eval (1draw) mod))
+  
   (define (hq-evt)
     (define c (1draw))
     (if (card:action-hq-evt? c)
       (random 10)
-      #f))
+      (void)))
 
-  ;; XXX hit effect
-  ;; XXX anti-tank
-  ;; XXX contact, cover, rally, spotted, concentrate fire, call for fire, grendar, inflitrate
+  (define (hit)
+    (card-hit-format (1draw)))  
+
+  (define (combat mod)
+    (match (raw-combat mod)
+      ["Hit"
+       (hit)]
+      [x x]))
+
+  (define (anti-tank)
+    (card:action-anti-tank-number (1draw)))
+
+  (define (flags n)
+    (foldr set-union (seteq) (map card-flags (draw n))))
+
+  (define (make-flags-fun the-flag [default 2] [override (seteq)])
+    (λ ([n default])
+      (define results (flags n))
+      (define overrides (set-intersect results override))
+      (cond
+        [(not (set-empty? overrides))
+         (set->list overrides)]
+        [(set-member? results the-flag)
+         the-flag]
+        [else
+         'Fail])))
+  (define infiltrate (make-flags-fun 'Infiltration 2))
+  (define contact (make-flags-fun 'Contact 0))
+  (define cover (make-flags-fun 'Cover 0))
+  (define rally (make-flags-fun 'Rally 2))
+  (define spot (make-flags-fun 'Crosshairs 2))
+  (define concentrate-fire (make-flags-fun 'Crosshairs 2 (seteq 'Jam)))
+  (define grenade (make-flags-fun 'Grenade 2 (seteq 'Jam)))
+  (define call-for-fire
+    (make-flags-fun 'Call-for-Fire 2
+                    (seteq 'Short-Fire 'Jam 'Battalion-Fire)))
 
   (define (quit) (exit 0))
 
@@ -196,7 +316,6 @@
    (except-out (all-defined-out)
                discard-pile draw-pile)
    (rename-out [quit q])))
-
 
 (module+ main
   (require racket/dict
@@ -212,9 +331,24 @@
        (define new-in (open-input-string (format "(~a)" l)))
        (read-syntax src new-in)]))
 
+  (define (the-print v)
+    (cond
+      [(card? v)
+       (card-print v)]
+      [(and (list? v) (not (empty? v)) (card? (first v)))
+       (cards-print v)]
+      [(raart? v)
+       (draw-here v)]
+      [(not (void? v))
+       (displayln v)]))
+
   (define the-ns (make-base-namespace))
+  (namespace-attach-module (current-namespace)
+                           'rtts/games/fields-of-fire/action-deck
+                           the-ns)
   (parameterize ([current-namespace the-ns]
-                 [current-read-interaction no-parens-read-syn])
+                 [current-read-interaction no-parens-read-syn]
+                 [current-print the-print])
     (namespace-require the-mod)
     (define-values (vals stxs) (module->exports the-mod))
     (define available-commands
