@@ -4,8 +4,7 @@
          racket/match
          racket/list
          syntax/parse/define
-         struct-define
-         racket/set)
+         struct-define)
 
 (struct card () #:transparent)
 (struct card:reshuffle card () #:transparent)
@@ -205,9 +204,11 @@
 (define (groups n l)
   (reverse (foldr (λ (a d) (group-add n a d)) '() l)))
 
-(define (card-flags c)
+(define (card-flags c #:ht [ht0 (hasheq)])
   (struct-define card:action c)
-  (set-remove (list->seteq (list top-evt mid-evt)) #f))
+  (define ht1 (hash-update ht0 top-evt add1 0))
+  (define ht2 (hash-update ht1 mid-evt add1 0))
+  (hash-remove ht2 #f))
 
 ;; XXX convert to rune
 (module+ repl
@@ -286,29 +287,27 @@
     (card:action-anti-tank-number (1draw)))
 
   (define (flags n)
-    (foldr set-union (seteq) (map card-flags (draw n))))
+    (for/fold ([ht (hasheq)])
+              ([c (in-list (draw n))])
+      (card-flags c #:ht ht)))
 
-  (define (make-flags-fun the-flag [default 2] [override (seteq)])
+  (define (make-flags-fun default . keys-to-check)
     (λ ([n default])
       (define results (flags n))
-      (define overrides (set-intersect results override))
-      (cond
-        [(not (set-empty? overrides))
-         (set->list overrides)]
-        [(set-member? results the-flag)
-         the-flag]
-        [else
-         'Fail])))
-  (define infiltrate (make-flags-fun 'Infiltration 2))
-  (define contact (make-flags-fun 'Contact 0))
-  (define cover (make-flags-fun 'Cover 0))
-  (define rally (make-flags-fun 'Rally 2))
-  (define spot (make-flags-fun 'Crosshairs 2))
-  (define concentrate-fire (make-flags-fun 'Crosshairs 2 (seteq 'Jam)))
-  (define grenade (make-flags-fun 'Grenade 2 (seteq 'Jam)))
-  (define call-for-fire
-    (make-flags-fun 'Call-for-Fire 2
-                    (seteq 'Short-Fire 'Jam 'Battalion-Fire)))
+      (or (for/or ([k (in-list keys-to-check)])
+            (match (hash-ref results k #f)
+              [#f #f]
+              [1 k]
+              [x (~a k " x" x "!")]))
+          'Fail)))
+  (define infiltrate (make-flags-fun 2 I))
+  (define contact (make-flags-fun 0 C))
+  (define cover (make-flags-fun 0 V))
+  (define rally (make-flags-fun 2 R))
+  (define spot (make-flags-fun 2 X))
+  (define concentrate-fire (make-flags-fun 2 J X))
+  (define grenade (make-flags-fun 2 J G))
+  (define call-for-fire (make-flags-fun 2 J FS F3 F))
 
   (define (quit) (exit 0))
 
