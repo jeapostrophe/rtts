@@ -118,10 +118,57 @@
    [50 1 0 #f FS #f 0  A  A  A -4 #f #f 2 3 4 5 6 7 8 9 10 11 12]
    [51 reshuffle]))
 
+(module+ main
+  (when #f
+    (local-require math/statistics)
+    (define stats (make-hash))
+    (define (stat*! label val)
+      (hash-update! stats label (λ (old) (cons val old)) '()))
+    (define-syntax-rule (stat! i)
+      (stat*! 'i i))
+    (define (stat-evt! i)
+      (for ([i (in-list i)] #:when i)
+        (stat*! (cons 'evt i) #t)))
+
+    (define n 0)
+    (for ([c (in-list deck)]
+          #:when (card:action? c))
+      (set! n (add1 n))
+      (struct-define card:action c)
+      (stat! activated-commands)
+      (stat! initiative-commands)
+      (stat-evt! (list top-evt mid-evt))
+      (stat! hq-evt?)
+      (stat! anti-tank-number)
+      (stat*! (cons 'hit 'vet) hit-effect-vet)
+      (stat*! (cons 'hit 'line) hit-effect-line)
+      (stat*! (cons 'hit 'green) hit-effect-green)
+      (for ([mod (in-range -4 7)])
+        (stat*! (cons 'atk mod) (combat-eval c mod)))
+      (for ([i (in-naturals 2)]
+            [r (in-vector randoms)])
+        (stat*! (cons 'random i) r)))
+    (for ([(k v) (in-hash stats)]
+          #:when (and (cons? k) (eq? (car k) 'evt)))
+      (hash-set! stats k (append v (make-list (- n (length v)) #f))))
+
+    (draw-here
+     (table
+      (for/list ([k (in-list (sort (hash-keys stats) string-ci<=? #:key ~a))])
+        (define v (hash-ref stats k))
+        (define occ (make-hash))
+        (for ([v (in-list v)])
+          (hash-update! occ v add1 0))
+        (define report
+          (table (for/list ([k (in-list (sort (hash-keys occ) string-ci<=? #:key ~a))])
+                   (define v (hash-ref occ k))
+                   (list (text (~a k)) (text (~a v))))))
+        (list (text (~a k)) report))))))
+
 (define (combat-eval c mod)
   (struct-define card:action c)
   (define (combat-check low msg)
-    (and low (<= low mod) msg))
+    (and low (<= low (max -4 (min 6 mod))) msg))
   (or (combat-check combat-miss-low "Miss")
       (combat-check combat-pin-low "Pin")
       (combat-check combat-hit-low "Hit")))
@@ -267,7 +314,7 @@
 
   (define (raw-combat mod)
     (combat-eval (1draw) mod))
-  
+
   (define (hq-evt)
     (define c (1draw))
     (if (card:action-hq-evt? c)
@@ -275,10 +322,10 @@
       (void)))
 
   (define (hit)
-    (card-hit-format (1draw)))  
+    (card-hit-format (1draw)))
 
-  (define (combat mod)
-    (match (raw-combat mod)
+  (define (combat . mods)
+    (match (raw-combat (apply + mods))
       ["Hit"
        (hit)]
       [x x]))
